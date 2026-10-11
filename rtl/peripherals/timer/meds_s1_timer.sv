@@ -12,7 +12,7 @@ module meds_s1_timer #(
     input  logic                   rst_ni,         // Active-low asynchronous reset
 
     // AXI4-Lite Write Channels
-    input  logic [ADDR_WIDTH-1:0]  s_axi_awaddr_i,
+    input  logic [ADDR_WIDTH-1:2]  s_axi_awaddr_i,
     input  logic                   s_axi_awvalid_i,
     output logic                   s_axi_awready_o,
     input  logic [DATA_WIDTH-1:0]  s_axi_wdata_i,
@@ -23,7 +23,7 @@ module meds_s1_timer #(
     input  logic                   s_axi_bready_i,
 
     // AXI4-Lite Read Channels
-    input  logic [ADDR_WIDTH-1:0]  s_axi_araddr_i,
+    input  logic [ADDR_WIDTH-1:2]  s_axi_araddr_i,
     input  logic                   s_axi_arvalid_i,
     output logic                   s_axi_arready_o,
     output logic [DATA_WIDTH-1:0]  s_axi_rdata_o,
@@ -38,8 +38,8 @@ module meds_s1_timer #(
     // 1. AXI4-Lite Handshake Logic
     
     logic aw_en;
-    logic [ADDR_WIDTH-1:0] axi_awaddr_reg;
-    logic [ADDR_WIDTH-1:0] axi_araddr_reg;
+    logic [1:0] axi_awaddr_reg;
+    logic [1:0] axi_araddr_reg;
 
     assign s_axi_bresp_o = 2'b00; // OKAY
     assign s_axi_rresp_o = 2'b00; // OKAY
@@ -75,7 +75,7 @@ module meds_s1_timer #(
     
     // 2. Isolated Timer Address Decoder
     
-    logic [1:0] dec_addr = (s_axi_awready_o && s_axi_wready_o) ? axi_awaddr_reg[3:2] : s_axi_awaddr_i[3:2];
+    logic [1:0] dec_addr = (s_axi_awready_o && s_axi_wready_o) ? axi_awaddr_reg : s_axi_awaddr_i;
     logic       write_en = (s_axi_awready_o && s_axi_wready_o) || (s_axi_awvalid_i && s_axi_wvalid_i);
 
     // Offset 0x0: Control Register (Bit 0: EN, Bit 1: MODE, Bit 2: SW_CLR)
@@ -186,7 +186,7 @@ module meds_s1_timer #(
 
             if (s_axi_arready_o && s_axi_arvalid_i && ~s_axi_rvalid_o) begin
                 s_axi_rvalid_o <= 1'b1;
-                case (axi_araddr_reg[3:2])
+                case (axi_araddr_reg)
                     2'b00: s_axi_rdata_o <= {29'b0, timer_irq_o, timer_mode_q, timer_en_q};
                     2'b01: s_axi_rdata_o <= timer_com_q;
                     2'b10: s_axi_rdata_o <= cnt_q; // Exposing current count for software polling

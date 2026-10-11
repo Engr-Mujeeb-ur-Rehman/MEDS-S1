@@ -24,6 +24,9 @@ lint_off -rule WIDTHTRUNC   -file "*verif/unit/*"
 lint_off -rule WIDTHEXPAND  -file "*verif/unit/*"
 lint_off -rule DECLFILENAME -file "*verif/*"
 
+// GPIO register writes define only bit 0; upper AXI write-data bits are reserved.
+lint_off -rule UNUSEDSIGNAL -file "*rtl/peripherals/gpio/meds_s1_gpio.sv"
+
 // `make lint` checks the whole RTL tree as a library, so there is deliberately
 // no single top module.  Once the generator emits meds_s1_soc_top (R-04), the
 // lint target gains --top-module and this waiver should be REMOVED.

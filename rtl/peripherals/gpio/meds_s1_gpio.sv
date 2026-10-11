@@ -13,10 +13,12 @@ module meds_s1_gpio #(
     input  logic                   rst_ni,         // Active-low asynchronous reset
 
     // AXI4-Lite Write Channels
-    input  logic [ADDR_WIDTH-1:0]  s_axi_awaddr_i,
+    input  logic [ADDR_WIDTH-1:2]  s_axi_awaddr_i,
     input  logic                   s_axi_awvalid_i,
     output logic                   s_axi_awready_o,
+    /* verilator lint_off UNUSEDSIGNAL */
     input  logic [DATA_WIDTH-1:0]  s_axi_wdata_i,
+    /* verilator lint_on UNUSEDSIGNAL */
     input  logic                   s_axi_wvalid_i,
     output logic                   s_axi_wready_o,
     output logic [1:0]             s_axi_bresp_o,
@@ -24,7 +26,7 @@ module meds_s1_gpio #(
     input  logic                   s_axi_bready_i,
 
     // AXI4-Lite Read Channels
-    input  logic [ADDR_WIDTH-1:0]  s_axi_araddr_i,
+    input  logic [ADDR_WIDTH-1:2]  s_axi_araddr_i,
     input  logic                   s_axi_arvalid_i,
     output logic                   s_axi_arready_o,
     output logic [DATA_WIDTH-1:0]  s_axi_rdata_o,
@@ -42,8 +44,8 @@ module meds_s1_gpio #(
     // 1. AXI4-Lite Handshake Logic
   
     logic aw_en;
-    logic [ADDR_WIDTH-1:0] axi_awaddr_reg;
-    logic [ADDR_WIDTH-1:0] axi_araddr_reg;
+    logic [1:0] axi_awaddr_reg;
+    logic [1:0] axi_araddr_reg;
 
     assign s_axi_bresp_o = 2'b00; // OKAY
     assign s_axi_rresp_o = 2'b00; // OKAY
@@ -79,7 +81,7 @@ module meds_s1_gpio #(
     
     // 2. Address Decoder (Isolated for GPIO)
     
-    logic [1:0] dec_addr = (s_axi_awready_o && s_axi_wready_o) ? axi_awaddr_reg[3:2] : s_axi_awaddr_i[3:2];
+    logic [1:0] dec_addr = (s_axi_awready_o && s_axi_wready_o) ? axi_awaddr_reg : s_axi_awaddr_i;
     logic       write_en = (s_axi_awready_o && s_axi_wready_o) || (s_axi_awvalid_i && s_axi_wvalid_i);
 
     // Decoding offsets matching the cascaded AND/NOT logic
@@ -171,7 +173,7 @@ module meds_s1_gpio #(
 
             if (s_axi_arready_o && s_axi_arvalid_i && ~s_axi_rvalid_o) begin
                 s_axi_rvalid_o <= 1'b1;
-                case (axi_araddr_reg[3:2])
+                case (axi_araddr_reg)
                     2'b00: s_axi_rdata_o <= {31'b0, gpio_dir_q};
                     2'b01: s_axi_rdata_o <= {31'b0, syn2_q}; // Bypass delay to read live synchronized state
                     2'b10: s_axi_rdata_o <= {31'b0, gpio_irq_o}; // Read IRQ status
