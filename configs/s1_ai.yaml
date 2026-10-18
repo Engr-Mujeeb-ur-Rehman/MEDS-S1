@@ -32,7 +32,7 @@ backbone:
   id_width: 6
 peripheral_bus:
   protocol: axi4lite
-  data_width: 32
+  data_width: 64
 
 sockets: 2
 debug: true
@@ -41,16 +41,16 @@ boards: ["kc705"]
 
 # -- memory map --------------------------------------------------------------
 # Every region carries the full PMA set (INTERFACES.md section 9, rules P1-P5).
-# cacheable | idempotent | order | atomic | align
+# cacheable | idempotent | order | atomic | align | widths (device regions)
 memory_map:
   - {name: bootrom, base: 0x00001000, size: 32K,  type: rom,
      pma: {cacheable: i-only, idempotent: true,  order: rvwmo,  atomic: [],           align: natural}}
   - {name: clint,   base: 0x02000000, size: 64K,  type: device,
-     pma: {cacheable: false,  idempotent: false, order: strong, atomic: [],           align: natural}}
+     pma: {cacheable: false,  idempotent: false, order: strong, atomic: [],           align: natural, widths: [4, 8]}}
   - {name: plic,    base: 0x0C000000, size: 4M,   type: device,
-     pma: {cacheable: false,  idempotent: false, order: strong, atomic: [],           align: natural}}
+     pma: {cacheable: false,  idempotent: false, order: strong, atomic: [],           align: natural, widths: [4]}}
   - {name: uart0,   base: 0x10000000, size: 4K,   type: device, irq: 1,
-     pma: {cacheable: false,  idempotent: false, order: strong, atomic: [],           align: natural}}
+     pma: {cacheable: false,  idempotent: false, order: strong, atomic: [],           align: natural, widths: [4]}}
   - {name: sram,    base: 0x40000000, size: 256K, type: memory,
      pma: {cacheable: true,   idempotent: true,  order: rvwmo,  atomic: [lrsc, amo],  align: any}}
   - {name: dram,    base: 0x80000000, size: 1G,   type: memory,

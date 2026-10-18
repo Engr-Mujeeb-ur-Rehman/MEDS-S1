@@ -308,13 +308,26 @@ error path. Add them in the adapter.
 | | Backbone | Peripheral subtree |
 |---|---|---|
 | Protocol | AXI4 | AXI4-Lite |
-| Data width | **256 bit** (parameter; validate 256 and 64) | 32 bit |
+| Data width | **256 bit** (parameter; validate 256 and 64) | **64 bit** (ADR-0005) |
 | Address width | 40 bit | 40 bit |
 | ID width | 6 bit | — |
 | Bursts | INCR up to 16 beats; WRAP for cache refill | none |
 | Masters | core I$, core D$, coprocessor port, accelerator sockets ×N, debug module | bridge from backbone |
 | Slaves | DRAM, on-chip SRAM, boot ROM, AXI-Lite bridge, accelerator MMIO | CLINT, PLIC, UART, SPI, GPIO, timers |
+| Slave port | — | `lite_req_t` / `lite_rsp_t` from `meds_s1_lite_pkg` |
 | Implementation | `pulp-platform/axi` crossbar | `pulp-platform/axi` lite xbar |
+
+**The peripheral subtree is 64 bits wide, not 32.** `mtime` and `mtimecmp` are architecturally
+64-bit and must move in one access, which is what §9 already assumed when it gave the `clint` region
+`widths: [4, 8]`. Peripherals whose registers are 32-bit — the PLIC, UART, SPI, GPIO — are not
+affected: `meds_s1_lite_regif` presents them a 32-bit register file and absorbs the byte lane in one
+place.
+
+**Every AXI4-Lite slave presents exactly two struct ports**, `lite_req_i` and `lite_rsp_o`, and no
+others. A peripheral with one port per AXI signal cannot be wired by the generator, cannot be
+swapped for another implementation, and grows a port every time the bus gains a signal. The bundle
+is declared once in `rtl/fabric/meds_s1_lite_pkg.sv`; `meds_s1_lite_regif` is the adapter every
+peripheral instantiates behind it, and `meds_s1_clint.sv` is the worked example.
 
 **Bandwidth budget** (100 MHz, 256-bit backbone = 3.2 GB/s per master port, memory-limited in
 aggregate). Every accelerator declares its demand here before it is accepted:
@@ -336,21 +349,32 @@ One frozen bundle. Every loosely-coupled accelerator presents exactly this and n
 SoC infrastructure can be synthesised out-of-context and reused across accelerator rebuilds.
 
 ```systemverilog
-module meds_s1_accel_socket #(
-  parameter int unsigned AXI_DW   = 256,
-  parameter int unsigned LITE_DW  =  32,
-  parameter bit          ASYNC    =   0   // 1 => accelerator has its own clock domain
+module meds_s1_accel_socket
+  import meds_s1_lite_pkg::*;
+#(
+  parameter int unsigned AXI_DW = 256,
+  parameter bit          ASYNC  =   0   // 1 => accelerator has its own clock domain
 )(
   input  logic  clk_i,        // fabric clock
   input  logic  rst_ni,
   input  logic  accel_clk_i,  // accelerator clock; tie to clk_i when ASYNC = 0
   input  logic  accel_rst_ni,
 
-  AXI_BUS.Slave      cfg,     // AXI4-Lite slave: the accelerator's MMIO window
-  AXI_BUS.Master     dma,     // AXI4 master:     the accelerator's data path
+  // The accelerator's MMIO window: the same I4 bundle every peripheral presents
+  // (§3).  LITE_DW is not a socket parameter -- the bus has one width, declared
+  // once in meds_s1_lite_pkg.
+  input  lite_req_t  cfg_req_i,
+  output lite_rsp_t  cfg_rsp_o,
+
+  AXI_BUS.Master     dma,     // AXI4 master: the accelerator's data path
   output logic       irq_o    // level-sensitive, to the PLIC
 );
 ```
+
+> The `cfg` port was `AXI_BUS.Slave` in draft 0.1. It is the struct bundle now, so that a socket and
+> a peripheral present the same thing and the generator wires both the same way (ADR-0005). The
+> `dma` port is unchanged and still open: the AXI4 backbone bundle is T-04's to declare, and R-07
+> should not build against `AXI_BUS` until it does.
 
 **Socket conventions (normative):**
 

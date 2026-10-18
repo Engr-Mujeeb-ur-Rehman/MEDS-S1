@@ -28,3 +28,15 @@ lint_off -rule DECLFILENAME -file "*verif/*"
 // no single top module.  Once the generator emits meds_s1_soc_top (R-04), the
 // lint target gains --top-module and this waiver should be REMOVED.
 lint_off -rule MULTITOP
+
+// meds_s1_lite_pkg declares the whole I4 contract in one place -- both error
+// response encodings and the idle bundle -- so that a peripheral author reads
+// one file to know the protocol.  Any single module uses a subset of it; that
+// is the point of a shared package, not a defect.  Same reasoning as s1_pkg.
+lint_off -rule UNUSEDPARAM -file "*meds_s1_lite_pkg.sv"
+
+// The PLIC specification reserves interrupt source 0 as "no interrupt", so
+// irq_i[0] is deliberately never read and pending_q[0] is hard-wired low.  This
+// is a permanent property of the interface, not an unfinished skeleton, and it
+// is the reason a PLIC with 15 usable sources is parameterised as 16.
+lint_off -rule UNUSEDSIGNAL -file "*meds_s1_plic.sv" -match "*irq_i*"
