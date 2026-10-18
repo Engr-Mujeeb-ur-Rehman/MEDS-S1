@@ -8,70 +8,90 @@
 | **Project** | M-03 |
 | **Spec** | SPEC §24, `specs/INTERFACES.md` §3 |
 | **Source** | `rtl/peripherals/gpio/meds_s1_gpio.sv` |
-| **Testbench** | TODO — `verif/unit/tb_meds_s1_gpio.sv` |
+| **Testbench** | passing — `verif/unit/tb_meds_s1_gpio.sv` |
 
 ## Purpose
 
-`meds_s1_gpio` provides one memory-mapped GPIO pin with programmable direction and output value. It synchronizes the external pin for software-visible input reads, detects synchronized edges, and latches an interrupt request until software clears it.
+`meds_s1_gpio` provides an eight-bit memory-mapped GPIO bank with independent
+direction and output values. Each pin is synchronized for software-visible
+input reads, both synchronized edge polarities are detected per bit, and IRQ
+status remains latched until selected bits are cleared.
 
 ## Interface contract
 
-| Signal | Dir | Width | Meaning | Contract |
-|---|---|---|---|---|
-| `clk_i` | in | 1 | system clock | single clock domain |
-| `rst_ni` | in | 1 | active-low reset | asynchronous assertion; registers clear low |
-| `s_axi_awaddr_i` | in | `ADDR_WIDTH-2` | write word address | addresses are word-aligned; low byte-offset bits are omitted |
-| `s_axi_awvalid_i` | in | 1 | write address/data request | must be asserted with `s_axi_wvalid_i` for acceptance |
-| `s_axi_awready_o` | out | 1 | write address ready | pulses when a write request is accepted |
-| `s_axi_wdata_i` | in | `DATA_WIDTH` | write data | bit 0 controls GPIO registers; bit 0 also clears the IRQ at offset 0x8 |
-| `s_axi_wvalid_i` | in | 1 | write data valid | must be asserted with `s_axi_awvalid_i` |
-| `s_axi_wready_o` | out | 1 | write data ready | pulses with `s_axi_awready_o` |
-| `s_axi_bresp_o` | out | 2 | write response | always AXI OKAY (`2'b00`) |
-| `s_axi_bvalid_o` | out | 1 | write response valid | remains asserted until `s_axi_bready_i` |
-| `s_axi_bready_i` | in | 1 | write response ready | completes the write response handshake |
-| `s_axi_araddr_i` | in | `ADDR_WIDTH-2` | read word address | addresses are word-aligned; low byte-offset bits are omitted |
-| `s_axi_arvalid_i` | in | 1 | read request valid | accepted when the read channel is ready |
-| `s_axi_arready_o` | out | 1 | read address ready | pulses when a read address is captured |
-| `s_axi_rdata_o` | out | `DATA_WIDTH` | read data | registered response data |
-| `s_axi_rresp_o` | out | 2 | read response | always AXI OKAY (`2'b00`) |
-| `s_axi_rvalid_o` | out | 1 | read response valid | remains asserted until `s_axi_rready_i` |
-| `s_axi_rready_i` | in | 1 | read response ready | completes the read response handshake |
-| `gpio_pin_io` | inout | 1 | physical GPIO pin | driven only when the direction register is 1; otherwise high impedance |
-| `gpio_irq_o` | out | 1 | GPIO interrupt status | latched high after a synchronized input edge |
+The peripheral exposes the shared 32-bit Lite structures from
+`rtl/common/meds_s1_lite_pkg.sv`:
 
-**Handshake:** write address and data are accepted together when both valid signals are asserted and the write channel is enabled. Read requests and responses use AXI-Lite-style valid/ready handshakes.
+```systemverilog
+module meds_s1_gpio
+	import meds_s1_lite_pkg::*;
+(
+		input  logic      clk_i,
+		input  logic      rst_ni,
+		input  lite_req_t lite_req_i,
+		output lite_rsp_t lite_rsp_o,
+		inout  logic [7:0] gpio_pin_io,
+		output logic [7:0] gpio_irq_o
+);
+```
 
-**Latency:** register writes update on the accepting clock edge. A read address is captured first, and the registered read response is produced on the following handshake cycle.
+`lite_req_i.addr` is a byte address. Requests use `valid`, `write`, `wdata`,
+and `wstrb`; the peripheral accepts them when `lite_rsp_o.ready` is high.
+Reads return combinational register data in `lite_rsp_o.rdata` with
+`lite_rsp_o.valid`. AXI-Lite channel handshakes and AXI responses are owned by
+`meds_s1_lite_axi_adapter`; GPIO contains no AXI FSM or AXI ports.
 
-**Backpressure:** one write is held until its response is accepted. A read response remains valid while `s_axi_rready_i` is low.
+| Signal | Direction | Width | Meaning |
+|---|---|---:|---|
+| `clk_i` | in | 1 | system clock |
+| `rst_ni` | in | 1 | asynchronous active-low reset |
+| `lite_req_i` | in | shared | full byte address, request, data, and strobes |
+| `lite_rsp_o` | out | shared | ready/valid response and read data |
+| `gpio_pin_io` | inout | 8 | independent physical GPIO pins; high impedance per direction bit |
+| `gpio_irq_o` | out | 8 | latched per-pin interrupt status |
 
-**Reset state:** control registers, synchronizer stages, interrupt status, AXI ready signals, response valid signals, and read data reset to zero. The pin is high impedance while the direction register is zero.
+**Handshake:** the shared adapter accepts AXI address and data together, then
+provides one Lite request. GPIO is always ready and returns a valid response.
+
+**Latency:** writes update on the accepting clock edge; reads return
+combinational register data for the active Lite request.
+
+**Backpressure:** the peripheral is always ready. The shared adapter holds an
+AXI response until the external AXI master accepts it.
+
+**Terminology:** AXI means Advanced eXtensible Interface; IRQ means interrupt
+request; W1C means write-one-to-clear; backpressure means the receiver can
+temporarily deassert ready while the producer holds valid data stable.
+
+**Reset state:** control registers, synchronizer stages, interrupt status, and
+read data reset to zero. The pin is high impedance while direction is zero.
 
 ## Register map
 
-| Offset | Access | Meaning |
+| Offset | Read behavior | Write behavior |
 |---|---|---|
-| `0x0` | RW | GPIO direction in bit 0; 0=input/high impedance, 1=output |
-| `0x4` | RW | GPIO output data in bit 0 |
-| `0x8` | W1C | Write bit 0 as 1 to clear the latched GPIO interrupt |
-| `0x0` | R | Direction register in bit 0 |
-| `0x4` | R | Synchronized input value in bit 0 |
-| `0x8` | R | Latched interrupt status in bit 0 |
+| `0x00` | Returns direction bits `[7:0]` | Updates direction bits `[7:0]` |
+| `0x04` | Returns synchronized input bits `[7:0]` | Updates output bits `[7:0]` |
+| `0x08` | Returns latched IRQ bits `[7:0]` | W1C: writing 1 to selected bits clears those IRQs |
 
 ## Parameters
 
 | Parameter | Default | Legal range | Effect |
 |---|---|---|---|
-| `DATA_WIDTH` | 32 | 32 | AXI register and data width |
-| `ADDR_WIDTH` | 4 | 4 | four-byte register window; the module exposes address bits `[ADDR_WIDTH-1:2]` |
+| Shared package | 32-bit | fixed | Lite request/response data width; GPIO uses the low byte |
+| Address width | 4 bits | fixed | byte offsets `0x00`, `0x04`, and `0x08` |
 
 ## Behaviour
 
-The direction register controls the tri-state output driver. When direction is enabled, `gpio_pin_io` drives the output register; otherwise the pin is released. The input path samples the pin through two synchronizer stages and compares the synchronized value with a one-cycle delayed copy. Any change sets `gpio_irq_o`. A write of 1 to bit 0 at offset `0x8` clears the interrupt latch when no new edge sets it in the same clock cycle.
+Each direction bit controls one tri-state output driver. The input path uses
+`syn1_q` as the first synchronization stage, `syn2_q` as the second stage, and
+`delay_q` as the previous synchronized sample. XOR detects both rising and
+falling edges independently for each pin; this is not debounce logic. A W1C
+write clears selected latched IRQ bits, but a new edge has priority for that
+bit during a simultaneous clear.
 
 ## Exceptions and errors
 
-- The module returns only AXI OKAY responses; no invalid-address response is implemented.
 - Unimplemented register addresses read as zero and do not enable a write register.
 - Input changes are observed only after synchronization, so the interrupt is delayed by the synchronizer pipeline.
 
@@ -80,16 +100,15 @@ The direction register controls the tri-state output driver. When direction is e
 | Layer | Status | Where |
 |---|---|---|
 | Lint | clean | `make lint` |
-| Unit test | TODO | `verif/unit/tb_meds_s1_gpio.sv` not present |
+| Unit test | passing, 27 checks | `verif/unit/tb_meds_s1_gpio.sv` |
 | Co-simulation | not applicable | |
 | Formal | not yet | |
 
 ## Known limitations
 
-- There is one GPIO pin and no debounce, filtering, or configurable interrupt polarity.
-- The AXI implementation accepts address and data valid together rather than independently buffering the two write channels.
+- There is no debounce, filtering, or configurable interrupt polarity.
+- The shared adapter accepts address and data together; GPIO does not buffer AXI channels.
 
 ## Open questions
 
 - Assign the module owner and backup before the peripheral interface is frozen.
-- Add a focused GPIO unit testbench covering direction, output, synchronized input, edge latch, clear, and AXI backpressure behavior.
