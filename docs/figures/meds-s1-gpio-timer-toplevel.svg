@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680">
+  <rect width="1200" height="680" fill="#ffffff"/>
+  <style>
+    .box { stroke: #1f2937; stroke-width: 2; rx: 8; }
+    .label { font-family: sans-serif; fill: #111827; text-anchor: middle; }
+    .title { font-size: 24px; font-weight: 700; }
+    .name { font-size: 20px; font-weight: 700; }
+    .detail { font-size: 15px; }
+    .bus { stroke: #2563eb; stroke-width: 5; fill: none; marker-end: url(#arrow); }
+    .irq { stroke: #dc2626; stroke-width: 3; fill: none; marker-end: url(#arrow-red); }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#dc2626"/>
+    </marker>
+  </defs>
+
+  <text x="600" y="42" class="label title">MEDS-S1 GPIO and Timer Peripheral Boundary</text>
+  <text x="600" y="70" class="label detail">Full byte addresses on the shared Lite request/response interface</text>
+
+  <rect x="70" y="270" width="190" height="90" class="box" fill="#dbeafe"/>
+  <text x="165" y="310" class="label name">CPU</text>
+  <text x="165" y="336" class="label detail">processor master</text>
+
+  <rect x="350" y="180" width="260" height="270" class="box" fill="#eff6ff"/>
+  <text x="480" y="225" class="label name">Shared bus/interface</text>
+  <text x="480" y="255" class="label detail">AXI-Lite adapter</text>
+  <text x="480" y="282" class="label detail">Lite request/response</text>
+  <text x="480" y="330" class="label detail">LITE_ADDR_WIDTH = 4</text>
+  <text x="480" y="356" class="label detail">LITE_DATA_WIDTH = 32</text>
+  <text x="480" y="405" class="label detail">owns handshakes</text>
+
+  <rect x="760" y="130" width="300" height="170" class="box" fill="#dcfce7"/>
+  <text x="910" y="175" class="label name">GPIO</text>
+  <text x="910" y="205" class="label detail">register decode</text>
+  <text x="910" y="230" class="label detail">one-bit pin datapath</text>
+  <text x="910" y="255" class="label detail">sync + both-edge IRQ</text>
+
+  <rect x="760" y="390" width="300" height="170" class="box" fill="#fef3c7"/>
+  <text x="910" y="435" class="label name">Timer</text>
+  <text x="910" y="465" class="label detail">register decode</text>
+  <text x="910" y="490" class="label detail">counter + comparator</text>
+  <text x="910" y="515" class="label detail">periodic / one-shot IRQ</text>
+
+  <path d="M260 315 H350" class="bus"/>
+  <path d="M610 270 H760" class="bus"/>
+  <path d="M610 360 H700 V475 H760" class="bus"/>
+  <text x="305" y="298" class="label detail">bus request</text>
+  <text x="685" y="250" class="label detail">Lite</text>
+
+  <rect x="90" y="510" width="190" height="70" class="box" fill="#fee2e2"/>
+  <text x="185" y="540" class="label name">PLIC</text>
+  <text x="185" y="563" class="label detail">interrupt controller</text>
+  <path d="M760 255 H680 V545 H280" class="irq"/>
+  <path d="M760 515 H680" class="irq"/>
+  <text x="650" y="535" class="label detail">gpio_irq / timer_irq</text>
+
+  <rect x="1090" y="170" width="80" height="70" class="box" fill="#dcfce7"/>
+  <text x="1130" y="202" class="label detail">GPIO</text>
+  <text x="1130" y="224" class="label detail">pin</text>
+  <path d="M1060 215 H1090" stroke="#16a34a" stroke-width="3" fill="none"/>
+</svg>

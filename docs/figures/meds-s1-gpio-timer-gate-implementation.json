@@ -1,0 +1,314 @@
+{
+  "schema": "meds-s1.gate-implementation.v1",
+  "title": "MEDS-S1 GPIO and Timer Gate-Level Implementation",
+  "generated_for": "rtl/peripherals/gpio/meds_s1_gpio.sv and rtl/peripherals/timer/meds_s1_timer.sv",
+  "addressing": {
+    "address_type": "full_byte_address",
+    "address_width": 4,
+    "data_width": 32,
+    "write_strobe_width": 4,
+    "register_offsets": {
+      "gpio": {
+        "direction": "0x00",
+        "data": "0x04",
+        "irq_status_clear": "0x08"
+      },
+      "timer": {
+        "control": "0x00",
+        "compare": "0x04",
+        "counter": "0x08"
+      }
+    }
+  },
+  "shared_interface": {
+    "package": "meds_s1_lite_pkg",
+    "request_type": "lite_req_t",
+    "response_type": "lite_rsp_t",
+    "request_fields": {
+      "valid": "request is active",
+      "write": "1 for a write request, 0 for a read request",
+      "addr": "full byte address [3:0]",
+      "wdata": "write data [31:0]",
+      "wstrb": "write byte strobes [3:0]",
+      "rsp_ready": "request source accepts the peripheral response"
+    },
+    "response_fields": {
+      "ready": "peripheral accepts the request",
+      "valid": "response is active",
+      "rdata": "read data [31:0]",
+      "err": "peripheral error indication"
+    },
+    "peripheral_behavior": {
+      "ready": "constant 1",
+      "valid": "lite_req_i.valid",
+      "read_latency": "combinational read mux",
+      "write_latency": "state updates on the accepting clock edge",
+      "axi_ownership": "meds_s1_lite_axi_adapter owns AXI-Lite handshakes and responses"
+    }
+  },
+  "gpio": {
+    "module": "meds_s1_gpio",
+    "clock_reset": {
+      "clock": "clk_i",
+      "reset": "rst_ni",
+      "reset_behavior": "asynchronous active-low reset"
+    },
+    "ports": {
+      "gpio_pin_io": "inout logic [7:0]",
+      "gpio_irq_o": "logic [7:0]"
+    },
+    "registers": {
+      "direction": {
+        "offset": "0x00",
+        "read": "gpio_dir_q[7:0]",
+        "write": "wdata[7:0] when wstrb[0] is asserted",
+        "effect": "each bit enables or disables its corresponding tri-state driver"
+      },
+      "data": {
+        "offset": "0x04",
+        "read": "syn2_q[7:0] synchronized input",
+        "write": "gpio_dout_q[7:0] from wdata[7:0] when wstrb[0] is asserted"
+      },
+      "irq_status_clear": {
+        "offset": "0x08",
+        "read": "gpio_irq_o[7:0]",
+        "write": "irq_clear[7:0] mask from wdata[7:0] when wstrb[0] is asserted",
+        "semantics": "write-one-to-clear selected interrupt bits"
+      }
+    },
+    "gates_and_storage": {
+      "write_fire": {
+        "type": "AND gate",
+        "inputs": ["lite_req_i.valid", "lite_req_i.write", "lite_req_i.rsp_ready", "lite_rsp_o.ready"],
+        "equation": "write_fire = valid & write & rsp_ready & ready"
+      },
+      "address_comparators": [
+        {
+          "name": "gpio_dir_address_compare",
+          "type": "equality comparator",
+          "equation": "lite_req_i.addr == GPIO_DIR_OFFSET (0x00)"
+        },
+        {
+          "name": "gpio_data_address_compare",
+          "type": "equality comparator",
+          "equation": "lite_req_i.addr == GPIO_DATA_OFFSET (0x04)"
+        },
+        {
+          "name": "gpio_irq_address_compare",
+          "type": "equality comparator",
+          "equation": "lite_req_i.addr == GPIO_IRQ_OFFSET (0x08)"
+        }
+      ],
+      "write_enables": [
+        {
+          "name": "we_dir",
+          "type": "AND gate",
+          "equation": "we_dir = write_fire & wstrb[0] & (addr == 0x00)"
+        },
+        {
+          "name": "we_dout",
+          "type": "AND gate",
+          "equation": "we_dout = write_fire & wstrb[0] & (addr == 0x04)"
+        },
+        {
+          "name": "irq_clear_select",
+          "type": "AND gate",
+          "equation": "irq_clear_select = write_fire & wstrb[0] & (addr == 0x08)"
+        }
+      ],
+      "register_storage": [
+        {
+          "name": "gpio_dir_q",
+          "type": "8-bit D flip-flop bank",
+          "enable": "we_dir",
+          "data": "lite_req_i.wdata[7:0]",
+          "reset": "0x00"
+        },
+        {
+          "name": "gpio_dout_q",
+          "type": "8-bit D flip-flop bank",
+          "enable": "we_dout",
+          "data": "lite_req_i.wdata[7:0]",
+          "reset": "0x00"
+        }
+      ],
+      "tri_state_logic": {
+        "type": "8 independent tri-state drivers",
+        "per_bit_equation": "gpio_pin_io[i] = gpio_dir_q[i] ? gpio_dout_q[i] : 1'bz",
+        "driver_enable": "gpio_dir_q[i]"
+      },
+      "input_synchronizer": [
+        {
+          "name": "syn1_q",
+          "type": "8-bit D flip-flop bank",
+          "data": "gpio_pin_io[7:0]",
+          "purpose": "first clock-domain synchronization stage"
+        },
+        {
+          "name": "syn2_q",
+          "type": "8-bit D flip-flop bank",
+          "data": "syn1_q",
+          "purpose": "second clock-domain synchronization stage"
+        },
+        {
+          "name": "delay_q",
+          "type": "8-bit D flip-flop bank",
+          "data": "syn2_q",
+          "purpose": "previous synchronized sample"
+        }
+      ],
+      "edge_detector": {
+        "type": "8 parallel XOR gates",
+        "equation": "gpio_edge_pulse[i] = syn2_q[i] ^ delay_q[i]",
+        "detects": ["rising edges", "falling edges"],
+        "debounce": false
+      },
+      "irq_latch": {
+        "clear_mask": "irq_clear[7:0] = irq_clear_select ? wdata[7:0] : 0x00",
+        "inverter": "not_clear = ~irq_clear",
+        "preserve_gate": "preserved_irq = gpio_irq_o & not_clear",
+        "set_gate": "next_irq = preserved_irq | gpio_edge_pulse",
+        "storage": "8-bit D flip-flop bank gpio_irq_o",
+        "priority": "new edge has priority over simultaneous clear"
+      },
+      "read_mux": {
+        "type": "combinational multiplexer",
+        "cases": {
+          "0x00": "read_data[7:0] = gpio_dir_q",
+          "0x04": "read_data[7:0] = syn2_q",
+          "0x08": "read_data[7:0] = gpio_irq_o",
+          "default": "read_data = 0x00000000"
+        }
+      }
+    }
+  },
+  "timer": {
+    "module": "meds_s1_timer",
+    "clock_reset": {
+      "clock": "clk_i",
+      "reset": "rst_ni",
+      "reset_behavior": "asynchronous active-low reset"
+    },
+    "ports": {
+      "timer_irq_o": "logic"
+    },
+    "registers": {
+      "control": {
+        "offset": "0x00",
+        "read": "{timer_irq_o, timer_mode_q, timer_en_q} in bits [2:0]",
+        "write": "wdata[0] enables timer, wdata[1] selects mode, wdata[2] clears IRQ",
+        "mode": {
+          "0": "periodic",
+          "1": "one-shot"
+        }
+      },
+      "compare": {
+        "offset": "0x04",
+        "read": "timer_com_q[31:0]",
+        "write": "timer_com_q <= wdata[31:0]"
+      },
+      "counter": {
+        "offset": "0x08",
+        "read": "cnt_q[31:0]",
+        "write": "reserved"
+      }
+    },
+    "gates_and_storage": {
+      "write_fire": {
+        "type": "AND gate",
+        "inputs": ["lite_req_i.valid", "lite_req_i.write", "lite_req_i.rsp_ready", "lite_rsp_o.ready"],
+        "equation": "write_fire = valid & write & rsp_ready & ready"
+      },
+      "address_comparators": [
+        {
+          "name": "timer_control_address_compare",
+          "type": "equality comparator",
+          "equation": "lite_req_i.addr == TIMER_CTRL_OFFSET (0x00)"
+        },
+        {
+          "name": "timer_compare_address_compare",
+          "type": "equality comparator",
+          "equation": "lite_req_i.addr == TIMER_COMPARE_OFFSET (0x04)"
+        }
+      ],
+      "write_enables": [
+        {
+          "name": "we_ctrl",
+          "type": "AND gate",
+          "equation": "we_ctrl = write_fire & wstrb[0] & (addr == 0x00)"
+        },
+        {
+          "name": "we_com",
+          "type": "AND gate",
+          "equation": "we_com = write_fire & (addr == 0x04)"
+        }
+      ],
+      "control_storage": [
+        {
+          "name": "timer_en_q",
+          "type": "D flip-flop",
+          "enable": "we_ctrl",
+          "data": "wdata[0]",
+          "clear": "oneshot_halt_pulse",
+          "reset": "0"
+        },
+        {
+          "name": "timer_mode_q",
+          "type": "D flip-flop",
+          "enable": "we_ctrl",
+          "data": "wdata[1]",
+          "reset": "0"
+        },
+        {
+          "name": "timer_com_q",
+          "type": "32-bit D flip-flop bank",
+          "enable": "we_com",
+          "data": "wdata[31:0]",
+          "reset": "0x00000000"
+        }
+      ],
+      "counter_datapath": {
+        "adder": "adder_out = cnt_q + 32'd1",
+        "subtractor": "sub_result = {1'b0,cnt_q} - {1'b0,timer_com_q}",
+        "borrow": "borrow_out = sub_result[32]",
+        "comparison": "match_signal = ~borrow_out, equivalent to cnt_q >= timer_com_q",
+        "action": "action_pulse = match_signal & timer_en_q",
+        "hold_count_mux": "mux1_out = timer_en_q ? adder_out : cnt_q",
+        "periodic_reset": "periodic_reset_pulse = ~timer_mode_q & action_pulse",
+        "counter_mux": "mux2_out = periodic_reset_pulse ? 0 : mux1_out",
+        "storage": "32-bit D flip-flop bank cnt_q, D = mux2_out"
+      },
+      "mode_logic": {
+        "periodic_gate": "periodic_reset_pulse = ~timer_mode_q & action_pulse",
+        "one_shot_gate": "oneshot_halt_pulse = timer_mode_q & action_pulse",
+        "periodic_effect": "counter mux selects zero",
+        "one_shot_effect": "timer_en_q is cleared"
+      },
+      "irq_latch": {
+        "clear_gate": "timer_irq_clear = we_ctrl & wdata[2]",
+        "storage": "D flip-flop timer_irq_o",
+        "set": "action_pulse",
+        "clear": "timer_irq_clear",
+        "priority": "action_pulse has priority over timer_irq_clear"
+      },
+      "read_mux": {
+        "type": "combinational multiplexer",
+        "cases": {
+          "0x00": "{29'b0, timer_irq_o, timer_mode_q, timer_en_q}",
+          "0x04": "timer_com_q",
+          "0x08": "cnt_q",
+          "default": "read_data = 0x00000000"
+        }
+      }
+    }
+  },
+  "verification": {
+    "gpio_testbench": "verif/unit/tb_meds_s1_gpio.sv",
+    "timer_testbench": "verif/unit/tb_meds_s1_timer.sv",
+    "gpio_checks": 27,
+    "timer_checks": 33,
+    "full_unit_suite_checks": 4266,
+    "lint_configurations": ["s1_nano", "s1_base", "s1_ai", "s1_linux"],
+    "status": "passing"
+  }
+}
