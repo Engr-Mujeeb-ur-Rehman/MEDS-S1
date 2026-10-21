@@ -1,7 +1,9 @@
 # meds_s1_gpio_core
 
 ## Status
-WIP — M-03. Direct-core tests are provided but have not yet been run.
+WIP — M-03. Direct-core verification passed 21 checks in CI at
+commit 5205058. AXI integration and M-03 requirement confirmation
+remain outstanding.
 
 ## Purpose
 Implements eight GPIO pins, per-pin direction and output storage,
@@ -30,4 +32,12 @@ enable register, polarity selection or debounce.
 
 ## Verification
 Testbench: verif/unit/tb_meds_s1_gpio_core.sv.
-This tests the register interface and GPIO behavior, not AXI or PLIC.
+
+All 21 checks passed in CI at commit 5205058. Tests cover reset,
+direction and output register writes, byte strobes, synchronized
+input sampling, rising and falling edge detection, selective
+write-one-to-clear interrupt handling, simultaneous edge/clear
+priority, and invalid register addresses.
+
+Verification covers the core register interface and GPIO behavior.
+It does not verify AXI, PLIC or software integration.
