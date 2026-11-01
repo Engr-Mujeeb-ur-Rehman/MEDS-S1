@@ -1,8 +1,9 @@
 # meds_s1_gpio_sync
 
 ## Status
-WIP — M-03. This proposed implementation has not yet been simulated
-or checked with the project lint configuration.
+WIP — M-03. The implementation is exercised indirectly by the GPIO
+core unit test. Dedicated CDC review and project-level lint evidence
+remain outstanding.
 
 ## Purpose
 Synchronizes eight independent asynchronous GPIO inputs through two
@@ -11,8 +12,15 @@ core and contains no bus protocol logic.
 
 ## Interface
 Inputs are clk_i, rst_ni and async_i[7:0]. The output is sync_o[7:0].
-Reset assertion clears both stages. Reset deassertion must already be
-synchronized by the system reset controller.
+Reset assertion asynchronously clears both stages. Reset deassertion
+must already be synchronized by the system reset controller.
+
+## Behaviour
+
+Each input bit passes through two registered stages. `sync_o` is driven
+from the second stage, so an input change is observed after two active
+clock edges under stable simulation conditions. The stage registers are
+marked with the `ASYNC_REG` implementation attribute.
 
 ## Limitations
 This is not debounce logic. It does not guarantee coherent sampling

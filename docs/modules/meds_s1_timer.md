@@ -19,9 +19,9 @@ meds_s1_timer_core. ADDR_W defaults to 12 for a 4 KiB region and must
 match the actual system configuration.
 
 ## Register map and semantics
-See meds_s1_timer_core.md. This version preserves the original
-enabled-counter behavior; it does not claim compliance with a
-continuously free-running-counter requirement.
+See meds_s1_timer_core.md. The register core clears its count on expiry in both modes.
+Periodic mode continues; one-shot mode disables counting at zero, following
+the instructor clarification. It is not a continuously free-running counter.
 
 ## Verification
 Direct timer-core tests exist in tb_meds_s1_timer_core.sv.

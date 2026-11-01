@@ -1,8 +1,9 @@
 # meds_s1_gpio
 
 ## Status
-WIP — M-03. AXI integration is blocked by the shared register-adapter
-skeleton. This wrapper has not been verified end to end.
+WIP — M-03. The wrapper is wired to the shared register adapter, but
+end-to-end AXI verification and M-03 requirement confirmation remain
+outstanding.
 
 ## Purpose
 Connects the official MEDS AXI4-Lite interface to the GPIO register
@@ -18,6 +19,8 @@ sticky per-pin interrupt status.
 meds_s1_lite_regif presents a 32-bit register interface to
 meds_s1_gpio_core. ADDR_W defaults to 12 for a 4 KiB window and must
 match the actual configured region.
+The wrapper passes the core's combinational read data and address-error
+response back to the register adapter. GPIO reads have no side effects.
 
 ## Register map
 See meds_s1_gpio_core.md for offsets, access permissions, reset and
@@ -26,4 +29,5 @@ interrupt behavior. Reads have no side effects.
 ## Verification
 Direct GPIO-core tests exist in tb_meds_s1_gpio_core.sv.
 They do not demonstrate AXI handshakes or interrupt-controller routing.
-Full wrapper tests must be added after the shared adapter is functional.
+Full wrapper tests are still required for AXI handshakes and
+interrupt-controller routing.

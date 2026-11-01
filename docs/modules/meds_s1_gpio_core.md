@@ -1,9 +1,8 @@
 # meds_s1_gpio_core
 
 ## Status
-WIP — M-03. Direct-core verification passed 21 checks in CI at
-commit 5205058. AXI integration and M-03 requirement confirmation
-remain outstanding.
+WIP — M-03. Direct-core verification passed 21 checks. AXI integration
+and M-03 requirement confirmation remain outstanding.
 
 ## Purpose
 Implements eight GPIO pins, per-pin direction and output storage,
@@ -21,8 +20,10 @@ reg_rdata_o and reg_err_o are combinational.
 | 0x04 | Synchronized inputs | Output bits 7:0 |
 | 0x08 | Pending interrupts | Write-one-to-clear bits 7:0 |
 
-Only byte strobe zero affects these eight-bit fields.
-Unmapped offsets return zero data and assert reg_err_o.
+Only byte strobe zero affects these eight-bit fields; upper write data
+bits and byte strobes are reserved and ignored. Unmapped offsets return
+zero data and assert reg_err_o. Address decoding uses the full
+reg_addr_i byte offset.
 
 ## Interrupts
 Both synchronized edge polarities set pending bits. A new event wins
@@ -30,10 +31,13 @@ over simultaneous clearing. Output-pin transitions can also generate
 events, preserving the existing implementation. There is no interrupt
 enable register, polarity selection or debounce.
 
+Writing a one to a bit of the 0x08 register clears that pending bit;
+writing zero leaves it unchanged unless a new edge event occurs.
+
 ## Verification
 Testbench: verif/unit/tb_meds_s1_gpio_core.sv.
 
-All 21 checks passed in CI at commit 5205058. Tests cover reset,
+The testbench covers reset,
 direction and output register writes, byte strobes, synchronized
 input sampling, rising and falling edge detection, selective
 write-one-to-clear interrupt handling, simultaneous edge/clear

@@ -114,7 +114,7 @@ module tb_meds_s1_timer_core;
     write_reg('h04, 3);
     write_reg('h00, 1);
 
-    // With compare=3, the existing design triggers on counting edge 4.
+    // With compare=3, the current-count comparison triggers on counting edge 4.
     repeat (3) @(negedge clk_i);
     check32("periodic not early", {31'b0, irq}, 0);
 
@@ -138,7 +138,17 @@ module tb_meds_s1_timer_core;
     check32("one-shot IRQ", {31'b0, irq}, 1);
 
     read_check("one-shot disabled", 'h00, 6);
-    read_check("one-shot retained count", 'h08, 3);
+    read_check("one-shot clears count", 'h08, 0);
+
+    // Clear the old interrupt while retaining one-shot mode, then rearm.
+    write_reg('h00, 6);
+    write_reg('h00, 3);
+    repeat (2) @(negedge clk_i);
+    check32("rearmed one-shot not early", {31'b0, irq}, 0);
+    @(negedge clk_i);
+    check32("rearmed one-shot event", {31'b0, irq}, 1);
+    read_check("rearmed one-shot count zero", 'h08, 0);
+    read_check("rearmed one-shot disabled", 'h00, 6);
 
     write_reg('h00, 4);
     repeat (5) @(negedge clk_i);
@@ -158,6 +168,73 @@ module tb_meds_s1_timer_core;
     write_reg('h00, 0);
     write_reg('h00, 4);
     check32("clear after disabling", {31'b0, irq}, 0);
+
+    // Periodic mode remains enabled across multiple count clears.
+    reset_dut();
+    write_reg('h04, 3);
+    write_reg('h00, 1);
+    repeat (4) @(negedge clk_i);
+    addr = 'h08;
+    #1;
+    check32("first periodic boundary", rdata, 0);
+    // Clear pending without changing EN; this write lands before next expiry.
+    write_reg('h00, 5);
+    check32("periodic clear between events", {31'b0, irq}, 0);
+    repeat (2) @(negedge clk_i);
+    addr = 'h08;
+    #1;
+    check32("second periodic boundary", rdata, 0);
+    check32("second periodic IRQ", {31'b0, irq}, 1);
+    addr = 'h00;
+    #1;
+    check32("periodic remains enabled", rdata, 5);
+
+    // A one-shot expiry wins against a same-edge enable/mode write and W1C.
+    reset_dut();
+    write_reg('h04, 2);
+    write_reg('h00, 3);
+    @(negedge clk_i);
+    // write_reg presents CTRL while count is 2, for the expiry edge.
+    write_reg('h00, 5);
+    addr = 'h00;
+    #1;
+    check32("one-shot halt wins CTRL write", rdata, 6);
+    addr = 'h08;
+    #1;
+    check32("one-shot simultaneous write clears count", rdata, 0);
+    check32("one-shot event wins W1C", {31'b0, irq}, 1);
+
+    // Equality comparison: a reduced threshold below count must not act as >=.
+    reset_dut();
+    write_reg('h04, 20);
+    write_reg('h00, 1);
+    repeat (5) @(negedge clk_i);
+    write_reg('h04, 1);
+    repeat (3) @(negedge clk_i);
+    check32("lower threshold does not expire immediately", {31'b0, irq}, 0);
+    write_reg('h00, 0);
+    addr = 'h08;
+    #1;
+    begin
+      logic [31:0] held_count;
+      held_count = rdata;
+      write_reg('h08, '1);
+      read_check("COUNT is read only", 'h08, held_count);
+      repeat (3) @(negedge clk_i);
+      check32("disabled count holds", rdata, held_count);
+    end
+
+    // One-shot with zero compare expires once and stays at zero.
+    reset_dut();
+    write_reg('h00, 3);
+    @(negedge clk_i);
+    addr = 'h08;
+    #1;
+    check32("zero one-shot count", rdata, 0);
+    read_check("zero one-shot halted with IRQ", 'h00, 6);
+    write_reg('h00, 6);
+    repeat (3) @(negedge clk_i);
+    check32("zero one-shot does not retrigger", {31'b0, irq}, 0);
 
     $display("=== PASS : %0d checks ===", checks);
     $finish;

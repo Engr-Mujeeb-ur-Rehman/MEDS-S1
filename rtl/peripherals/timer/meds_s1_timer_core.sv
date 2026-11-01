@@ -32,7 +32,9 @@ module meds_s1_timer_core #(
   logic control_write;
   logic compare_write;
   logic irq_clear;
-  logic action;
+  logic timer_match;
+  logic timer_event;
+  logic count_clear;
   logic oneshot_halt;
 
   initial begin
@@ -51,8 +53,11 @@ module meds_s1_timer_core #(
 
   assign irq_clear = control_write && reg_wdata_i[2];
 
-  assign action = enabled_q && count_q >= compare_q;
-  assign oneshot_halt = oneshot_q && action;
+  // Compare the current count; a zero maximum expires on the first enabled edge.
+  assign timer_match  = (count_q == compare_q);
+  assign timer_event  = enabled_q && timer_match;
+  assign count_clear  = timer_event;
+  assign oneshot_halt = oneshot_q && timer_event;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -60,7 +65,7 @@ module meds_s1_timer_core #(
       oneshot_q <= 1'b0;
 
     end else if (oneshot_halt) begin
-      // Preserve the original priority over a simultaneous CTRL write.
+      // Expiry stops a one-shot even if software writes CTRL on this edge.
       enabled_q <= 1'b0;
 
     end else if (control_write) begin
@@ -87,18 +92,18 @@ module meds_s1_timer_core #(
     if (!rst_ni) begin
       count_q <= '0;
 
+    end else if (count_clear) begin
+      // Both modes finish at zero; only one-shot also clears the enable bit.
+      count_q <= '0;
     end else if (enabled_q) begin
-      if (!oneshot_q && action)
-        count_q <= '0;
-      else
-        count_q <= count_q + 1'b1;
+      count_q <= count_q + 1'b1;
     end
   end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni)
       timer_irq_o <= 1'b0;
-    else if (action)
+    else if (timer_event)
       timer_irq_o <= 1'b1;
     else if (irq_clear)
       timer_irq_o <= 1'b0;
